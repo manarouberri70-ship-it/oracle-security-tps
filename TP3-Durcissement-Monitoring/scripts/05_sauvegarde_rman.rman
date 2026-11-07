@@ -1,0 +1,39 @@
+# =====================================================================
+# TP Seance 3 - Partie 5 : Sauvegarde RMAN chiffree (etape 17)
+# Lancer : rman target /
+# =====================================================================
+
+# Sauvegarde de securite (avant le TP, mode ARCHIVELOG actif)
+BACKUP DATABASE PLUS ARCHIVELOG TAG 'AVANT_TP3';
+LIST BACKUP SUMMARY;
+
+# Configuration
+CONFIGURE ENCRYPTION ALGORITHM 'AES256';
+CONFIGURE RETENTION POLICY TO RECOVERY WINDOW OF 30 DAYS;
+CONFIGURE CONTROLFILE AUTOBACKUP ON;
+# NB : "CONFIGURE ENCRYPTION FOR DATABASE ON" non applique (exigerait un wallet
+#      TDE ouvert pour toutes les sauvegardes futures).
+
+# Dossier : /u01/backup n'est pas accessible en ecriture a oracle
+#   -> mkdir -p /u01/app/oracle/backup/secbank
+
+# Tentative 1 : chiffrement par mot de passe seul
+SET ENCRYPTION ON IDENTIFIED BY "Rman#Backup2026!" ONLY;
+BACKUP AS COMPRESSED BACKUPSET DATABASE PLUS ARCHIVELOG
+  FORMAT '/u01/app/oracle/backup/secbank/full_%d_%T_%s_%p.bkp' TAG 'FULL_CHIFFRE';
+# -> ORA-19836 sur les datafiles de SECBANKPDB (tablespaces deja chiffres en TDE)
+
+# Tentative 2 : mode dual (wallet + mot de passe)
+SET ENCRYPTION ON IDENTIFIED BY "Rman#Backup2026!";
+BACKUP AS COMPRESSED BACKUPSET DATABASE PLUS ARCHIVELOG
+  FORMAT '/u01/app/oracle/backup/secbank/full_%d_%T_%s_%p.bkp' TAG 'FULL_CHIFFRE2';
+# -> ORA-19914 / ORA-28365 : wallet TDE ferme (mot de passe du wallet indisponible)
+
+# Validation de la partie chiffree
+SET DECRYPTION IDENTIFIED BY "Rman#Backup2026!";
+RESTORE DATABASE VALIDATE;     # -> Finished restore (OK)
+LIST BACKUP SUMMARY;
+
+# Si le wallet est disponible (a faire dans SQL*Plus avant) :
+#   ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY "<mdp_wallet>" CONTAINER = ALL;
+# puis relancer la tentative 2.
